@@ -1,11 +1,11 @@
 import { randomBytes } from 'node:crypto'
+import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PDS, type PdsHooks } from '../src/index.js'
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
-import { once } from 'node:events'
 
 // No public PLC, real account, or operator environment is used.
 async function fixture(hooks?: PdsHooks) {
