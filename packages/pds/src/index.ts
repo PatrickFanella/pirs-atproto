@@ -218,7 +218,7 @@ export class PDS implements AsyncDisposable {
     app.use(cors({ maxAge: DAY / SECOND }))
     app.use(basicRoutes.createRouter(ctx))
     app.use(wellKnown.createRouter(ctx))
-    if (hooks?.xrpcMiddleware?.length) app.use(...hooks.xrpcMiddleware)
+    if (hooks?.xrpcMiddleware?.length) app.use('/xrpc', ...hooks.xrpcMiddleware)
     app.use(server.router)
     app.use(error.handler)
 

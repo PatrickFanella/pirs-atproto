@@ -93,12 +93,9 @@ describe('optional XRPC transport middleware', () => {
     expect(calls.splice(0)).toEqual(['first'])
     expect((await fetch(`${f.url}/xrpc/_health`)).status).toBe(200)
     expect(calls).toEqual([])
-    const failed = await fetch(
-      `${f.url}/xrpc/com.atproto.server.describeServer`,
-      {
-        headers: { 'x-pirs-test': 'throw' },
-      },
-    )
+    const failed = await fetch(`${f.url}/xrpc/com.atproto.server.getSession`, {
+      headers: { 'x-pirs-test': 'throw' },
+    })
     expect(failed.status).toBe(500)
     expect(await failed.json()).toEqual({
       error: 'InternalServerError',
@@ -106,8 +103,8 @@ describe('optional XRPC transport middleware', () => {
     })
     calls.splice(0)
     expect(
-      (await fetch(`${f.url}/xrpc/com.atproto.server.describeServer`)).status,
-    ).toBe(200)
+      (await fetch(`${f.url}/xrpc/com.atproto.server.getSession`)).status,
+    ).toBe(401)
     expect(calls).toEqual(['first', 'second'])
   })
 })
