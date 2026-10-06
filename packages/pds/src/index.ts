@@ -64,6 +64,12 @@ export type SkeletonHandler = MethodHandler<
   app.bsky.feed.getFeedSkeleton.$Output
 >
 
+/** Trusted transport adapters only. Plugin code belongs in a separate process. */
+export type PdsHooks = {
+  /** Runs after CORS and well-known routes, before the XRPC router. */
+  xrpcMiddleware?: readonly express.RequestHandler[]
+}
+
 export class PDS implements AsyncDisposable {
   public ctx: AppContext
   public app: express.Application
@@ -78,10 +84,11 @@ export class PDS implements AsyncDisposable {
   static async fromEnv(
     env: ServerEnvironment = readEnv(),
     overrides?: Partial<AppContextOptions>,
+    hooks?: PdsHooks,
   ): Promise<PDS> {
     const cfg = envToCfg(env)
     const secrets = envToSecrets(env)
-    return PDS.create(cfg, secrets, overrides)
+    return PDS.create(cfg, secrets, overrides, hooks)
   }
 
   /**
@@ -94,8 +101,10 @@ export class PDS implements AsyncDisposable {
     signals = ['SIGINT', 'SIGTERM'],
     onCreated = undefined,
     onStarted = undefined,
+    hooks = undefined,
   }: {
     env?: ServerEnvironment
+    hooks?: PdsHooks
     signal?: AbortSignal
     signals?: readonly NodeJS.Signals[]
     /**
@@ -124,7 +133,7 @@ export class PDS implements AsyncDisposable {
       signal.addEventListener('abort', () => process.off(sig, abort))
     }
 
-    await using pds = await PDS.fromEnv(env)
+    await using pds = await PDS.fromEnv(env, undefined, hooks)
 
     if (signal.aborted) return
 
@@ -153,6 +162,7 @@ export class PDS implements AsyncDisposable {
     cfg: ServerConfig,
     secrets: ServerSecrets,
     overrides?: Partial<AppContextOptions>,
+    hooks?: PdsHooks,
   ): Promise<PDS> {
     const ctx = await AppContext.fromConfig(cfg, secrets, overrides)
 
@@ -208,6 +218,7 @@ export class PDS implements AsyncDisposable {
     app.use(cors({ maxAge: DAY / SECOND }))
     app.use(basicRoutes.createRouter(ctx))
     app.use(wellKnown.createRouter(ctx))
+    if (hooks?.xrpcMiddleware?.length) app.use(...hooks.xrpcMiddleware)
     app.use(server.router)
     app.use(error.handler)
 
