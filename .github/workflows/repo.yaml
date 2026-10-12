@@ -45,24 +45,6 @@ jobs:
     needs: changeset
     runs-on: ubuntu-22.04
     timeout-minutes: 90
-    services:
-      postgres:
-        image: postgres:14.4-alpine
-        env:
-          POSTGRES_USER: pg
-          POSTGRES_PASSWORD: password
-        options: >-
-          --health-cmd "pg_isready -U pg"
-          --health-interval 1s
-          --health-timeout 10s
-          --health-retries 30
-      redis:
-        image: redis:7.0-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 1s
-          --health-timeout 10s
-          --health-retries 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -86,6 +68,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.x'
+      - name: Rebuild native dependencies for Node 22 tests
+        run: pnpm rebuild --recursive
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
       - name: Install test service and browser clients
         run: |
           sudo apt-get update
@@ -94,19 +80,41 @@ jobs:
       - name: Run the complete suite against job-owned services
         env:
           ATPROTO_TEST_NATIVE: '1'
-          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
-          REDIS_CONTAINER: ${{ job.services.redis.id }}
           LOG_ENABLED: 'false'
         run: |
-          postgres_host=$(docker inspect --format '{{.NetworkSettings.Networks.bridge.IPAddress}}' "$POSTGRES_CONTAINER")
-          redis_host=$(docker inspect --format '{{.NetworkSettings.Networks.bridge.IPAddress}}' "$REDIS_CONTAINER")
-          test -n "$postgres_host"
-          test -n "$redis_host"
-          export DB_TEST_POSTGRES_URL="postgresql://pg:password@${postgres_host}:5432/postgres"
-          export REDIS_TEST_HOST="${redis_host}:6379"
+          job_container=$(docker inspect --format '{{.Id}}' "$(hostname)")
+          test -n "$job_container"
+          network_id=
+          postgres_id=
+          redis_id=
+          connected=0
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ "$connected" = 1 ]; then docker network disconnect "$network_id" "$job_container" || true; fi
+            if [ -n "$postgres_id" ]; then docker rm --force --volumes "$postgres_id" || true; fi
+            if [ -n "$redis_id" ]; then docker rm --force --volumes "$redis_id" || true; fi
+            if [ -n "$network_id" ]; then docker network rm "$network_id" || true; fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          docker pull postgres:14.4-alpine
+          docker pull redis:7.0-alpine
+          network_id=$(docker network create --internal "pirs-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}-${job_container:0:12}")
+          postgres_id=$(docker create --network "$network_id" --network-alias postgres \
+            --env POSTGRES_USER=pg --env POSTGRES_PASSWORD=password \
+            postgres:14.4-alpine -c max_connections=1000)
+          redis_id=$(docker create --network "$network_id" --network-alias redis redis:7.0-alpine)
+          docker start "$postgres_id" "$redis_id"
+          docker network connect "$network_id" "$job_container"
+          connected=1
+          export DB_TEST_POSTGRES_URL=postgresql://pg:password@postgres:5432/postgres
+          export REDIS_TEST_HOST=redis:6379
           ready=0
           for attempt in $(seq 1 30); do
-            if pg_isready -h "$postgres_host" -p 5432 -U pg && [ "$(redis-cli -h "$redis_host" ping)" = PONG ]; then
+            if pg_isready -h postgres -p 5432 -U pg && [ "$(redis-cli -h redis ping)" = PONG ]; then
               ready=1
               break
             fi
