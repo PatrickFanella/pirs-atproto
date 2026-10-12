@@ -14,6 +14,7 @@ concurrency:
 jobs:
   changeset:
     name: Changeset
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     # The dependabot-changeset.yml workflow will trigger a new commit after
     # Dependabot updates, which will re-trigger this workflow. Other jobs below
@@ -39,121 +40,114 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: true
       - run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    # Ensure a changeset is present before we spend time building and testing.
+  qualification:
+    name: Build, verify and test
     needs: changeset
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          cache: pnpm
-          node-version-file: '.nvmrc'
-      - run: pnpm install --frozen-lockfile
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: true
-
-      # lex-cli code generation can be a bottleneck. The "prebuild" script in
-      # the "api" and "ozone" packages only re-runs lex-cli when needed: if the
-      # generated output is missing, or if any lexicon JSON has a newer mtime
-      # than the generated files. We cache the generated output keyed on the
-      # content of the lexicon JSONs (plus the package.json files that define
-      # the codegen command), so unchanged lexicons restore from cache.
-      #
-      # However, on a cache hit we have to fix mtimes by hand.
-      # `actions/checkout` writes every checked-out file (including
-      # lexicons/**/*.json) with mtime = checkout time, while `actions/cache`
-      # restores files with their original archived mtime (older). Without
-      # intervention, every lexicon JSON looks "newer" than the restored
-      # generated files and the prebuild script would re-run lex-cli even though
-      # nothing has changed. Touching the restored files brings their mtime to
-      # "now", so the prebuild's `find -newer` check correctly reports no newer
-      # lexicons.
-      - uses: actions/cache@v6
-        id: lex-cli-cache
-        with:
-          path: |
-            packages/api/src/client
-          key: lex-cli-${{ hashFiles('lexicons/**/*.json', 'packages/api/package.json', 'packages/ozone/package.json') }}
-      - if: steps.lex-cli-cache.outputs.cache-hit == 'true'
-        run: find packages/api/src/client -exec touch {} +
-
-      - run: pnpm build
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: build-artifacts
-          retention-days: 2
-          path: |
-            packages/*/dist
-            packages/*/*/dist
-            packages/*/src/proto
-            packages/*/src/lexicons
-            packages/lex/*/src/lexicons
-            packages/lex/*/tests/lexicons
-            packages/oauth/*/src/lexicons
-            packages/oauth/*/src/locales/*/messages.ts
-            packages/api/src/client
-            packages/api/src/moderation/const/labels.ts
-
-  test:
-    name: Test
-    needs: build
     runs-on: ubuntu-22.04
-    # Puppeteer does not work in recent Ubuntu versions without a workaround due
-    # to sandboxing issues. Using "ubuntu-latest" results in the following
-    # error:
-    #
-    # No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux
-    # distro that has disabled unprivileged user namespaces with AppArmor, see
-    # https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md.
-    # Otherwise see
-    # https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md
-    # for more information on developing with the (older) SUID sandbox. If you
-    # want to live dangerously and need an immediate workaround, you can try
-    # using --no-sandbox.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 8/8]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: docker.gitea.com/runner-images:ubuntu-22.04
+      options: --cap-add=SYS_ADMIN
+    env:
+      PUPPETEER_CACHE_DIR: /tmp/pirs-puppeteer
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          cache: pnpm
-          node-version: '22.x'
-      - run: echo "CURRENT_MONTH=$(date +'%Y-%m')" >> $GITHUB_ENV
-      - uses: actions/cache@v6
-        name: Cache Puppeteer browser binaries
-        with:
-          path: ~/.cache/puppeteer
-          key: ${{ env.CURRENT_MONTH }}-${{ runner.os }}-${{ runner.arch }}
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v8
-        with:
-          name: build-artifacts
-          path: packages
-      - run: pnpm test:withFlags --maxWorkers=1 --shard=${{ matrix.shard }} --passWithNoTests
-
-  verify:
-    name: Verify
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          cache: pnpm
           node-version-file: '.nvmrc'
       - run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-      - uses: actions/download-artifact@v8
+      - name: Build with bounded code generation
+        run: |
+          pnpm run build:tooling --force
+          pnpm --filter '!atp' --recursive --workspace-concurrency=1 --if-present run prebuild
+          pnpm run build:ts
+          pnpm --filter '!atp' --recursive --workspace-concurrency=1 --if-present run build:ui
+      - name: Verify with bounded formatter workers
+        run: |
+          pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 --if-present run '/^verify:.+$/'
+          pnpm run verify:style --parallel-workers=1
+          pnpm run verify:lint
+      - uses: actions/setup-node@v7
         with:
-          name: build-artifacts
-          path: packages
-      - run: pnpm verify
+          node-version: '22.x'
+      - name: Rebuild native dependencies for Node 22 tests
+        run: pnpm rebuild --recursive
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+      - name: Install test service and browser clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
+          pnpm --filter @atproto/pds exec puppeteer browsers install chrome --install-deps
+      - name: Prepare unprivileged browser tests
+        run: |
+          useradd --create-home --uid 10001 pirs-test
+          pnpm_binary=$(readlink -f "$(command -v pnpm)")
+          pnpm_root=$(dirname "$(dirname "$pnpm_binary")")
+          test "$(node -p "require('$pnpm_root/package.json').name")" = pnpm
+          tools_dir="${RUNNER_TEMP}/pirs-pnpm"
+          cp -R "$pnpm_root" "$tools_dir"
+          ln -s pnpm.cjs "$tools_dir/bin/pnpm"
+          chown -R pirs-test:pirs-test "$PWD" "$PUPPETEER_CACHE_DIR" "$tools_dir"
+          sandbox=$(find "$PUPPETEER_CACHE_DIR/chrome" -name chrome_sandbox -type f -print -quit)
+          test -n "$sandbox"
+          chown root:root "$sandbox"
+          chmod 4755 "$sandbox"
+          echo "PIRS_TEST_PNPM_DIR=$tools_dir" >> "$GITHUB_ENV"
+          runuser -u pirs-test -- env PNPM_HOME="$tools_dir/bin" PATH="$tools_dir/bin:$PATH" \
+            pnpm --filter @atproto/pds exec node --input-type=module -e \
+            'import { launch } from "puppeteer"; const browser = await launch({browser: "chrome"}); await browser.close();'
+      - name: Run the complete suite against job-owned services
+        env:
+          ATPROTO_TEST_NATIVE: '1'
+          LOG_ENABLED: 'false'
+        run: |
+          job_container=$(docker inspect --format '{{.Id}}' "$(hostname)")
+          test -n "$job_container"
+          network_id=
+          postgres_id=
+          redis_id=
+          connected=0
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ "$connected" = 1 ]; then docker network disconnect "$network_id" "$job_container" || true; fi
+            if [ -n "$postgres_id" ]; then docker rm --force --volumes "$postgres_id" || true; fi
+            if [ -n "$redis_id" ]; then docker rm --force --volumes "$redis_id" || true; fi
+            if [ -n "$network_id" ]; then docker network rm "$network_id" || true; fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          docker pull postgres:14.4-alpine
+          docker pull redis:7.0-alpine
+          network_id=$(docker network create --internal "pirs-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}-${job_container:0:12}")
+          postgres_id=$(docker create --network "$network_id" --network-alias postgres \
+            --env POSTGRES_USER=pg --env POSTGRES_PASSWORD=password \
+            postgres:14.4-alpine -c max_connections=1000)
+          redis_id=$(docker create --network "$network_id" --network-alias redis redis:7.0-alpine)
+          docker start "$postgres_id" "$redis_id"
+          docker network connect "$network_id" "$job_container"
+          connected=1
+          export DB_TEST_POSTGRES_URL=postgresql://pg:password@postgres:5432/postgres
+          export REDIS_TEST_HOST=redis:6379
+          ready=0
+          for attempt in $(seq 1 30); do
+            if pg_isready -h postgres -p 5432 -U pg && [ "$(redis-cli -h redis ping)" = PONG ]; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          for shard in $(seq 1 8); do
+            runuser -u pirs-test -- env PNPM_HOME="$PIRS_TEST_PNPM_DIR/bin" PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
+              pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --shard="$shard/8" --passWithNoTests
+          done

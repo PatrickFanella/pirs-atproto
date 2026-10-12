@@ -27,6 +27,7 @@ jobs:
     # created by people with write access, i.e. org members.
     # Bot-authored PRs (dependabot, changesets) are also skipped.
     if: >
+      github.server_url == 'https://github.com' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.type != 'Bot'
