@@ -17,6 +17,7 @@ jobs:
   build:
     name: Publish
     if: github.repository == 'bluesky-social/atproto'
+    timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
