@@ -20,6 +20,7 @@ concurrency:
 jobs:
   changeset:
     name: Generate changeset
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     # Only same-repo PRs authored by dependabot. PR author (not actor) so a
     # human reopening/rebasing the PR still gets a changeset regenerated, but

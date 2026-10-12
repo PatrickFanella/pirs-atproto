@@ -53,6 +53,7 @@ jobs:
       options: --cap-add=SYS_ADMIN
     env:
       PUPPETEER_CACHE_DIR: /tmp/pirs-puppeteer
+      PNPM_CONFIG_STORE_DIR: /tmp/pirs-pnpm-store
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -88,13 +89,10 @@ jobs:
       - name: Prepare unprivileged browser tests
         run: |
           useradd --create-home --uid 10001 pirs-test
-          pnpm_binary=$(readlink -f "$(command -v pnpm)")
-          pnpm_root=$(dirname "$(dirname "$pnpm_binary")")
-          test "$(node -p "require('$pnpm_root/package.json').name")" = pnpm
           tools_dir="${RUNNER_TEMP}/pirs-pnpm"
-          cp -R "$pnpm_root" "$tools_dir"
-          ln -s pnpm.cjs "$tools_dir/bin/pnpm"
-          chown -R pirs-test:pirs-test "$PWD" "$PUPPETEER_CACHE_DIR" "$tools_dir"
+          npm install --global --prefix "$tools_dir" --ignore-scripts --no-audit --no-fund \
+            "$(node -p 'require("./package.json").packageManager')"
+          chown -R pirs-test:pirs-test "$PWD" "$PUPPETEER_CACHE_DIR" "$PNPM_CONFIG_STORE_DIR" "$tools_dir"
           sandbox=$(find "$PUPPETEER_CACHE_DIR/chrome" -name chrome_sandbox -type f -print -quit)
           test -n "$sandbox"
           chown root:root "$sandbox"

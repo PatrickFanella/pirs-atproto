@@ -7,6 +7,7 @@ on:
 jobs:
   sync:
     if: github.repository == 'bluesky-social/atproto'
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Checkout public repo
