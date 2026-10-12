@@ -45,6 +45,9 @@ jobs:
     needs: changeset
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
     container:
       image: docker.gitea.com/runner-images:ubuntu-22.04
       options: --cap-add=SYS_ADMIN
@@ -97,7 +100,7 @@ jobs:
           chown root:root "$sandbox"
           chmod 4755 "$sandbox"
           echo "PIRS_TEST_PNPM_DIR=$tools_dir" >> "$GITHUB_ENV"
-          runuser -u pirs-test -- env PATH="$tools_dir/bin:$PATH" \
+          runuser -u pirs-test -- env PNPM_HOME="$tools_dir/bin" PATH="$tools_dir/bin:$PATH" \
             pnpm --filter @atproto/pds exec node --input-type=module -e \
             'import { launch } from "puppeteer"; const browser = await launch({browser: "chrome"}); await browser.close();'
       - name: Run the complete suite against job-owned services
@@ -145,6 +148,6 @@ jobs:
           done
           test "$ready" = 1
           for shard in $(seq 1 8); do
-            runuser -u pirs-test -- env PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
+            runuser -u pirs-test -- env PNPM_HOME="$PIRS_TEST_PNPM_DIR/bin" PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
               pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --shard="$shard/8" --passWithNoTests
           done
