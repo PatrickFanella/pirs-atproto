@@ -60,11 +60,14 @@ redis_clear() {
 
 main_native() {
   local services=${SERVICES}
-  local postgres_url_env_var=`[[ $services == *"db_test"* ]] && echo "DB_TEST_POSTGRES_URL" || echo "DB_POSTGRES_URL"`
-  local redis_host_env_var=`[[ $services == *"redis_test"* ]] && echo "REDIS_TEST_HOST" || echo "REDIS_HOST"`
-
-  postgres_url="${!postgres_url_env_var}"
-  redis_host="${!redis_host_env_var}"
+  case "$services" in
+    *db_test*) postgres_url_env_var=DB_TEST_POSTGRES_URL; postgres_url=${DB_TEST_POSTGRES_URL:-} ;;
+    *) postgres_url_env_var=DB_POSTGRES_URL; postgres_url=${DB_POSTGRES_URL:-} ;;
+  esac
+  case "$services" in
+    *redis_test*) redis_host_env_var=REDIS_TEST_HOST; redis_host=${REDIS_TEST_HOST:-} ;;
+    *) redis_host_env_var=REDIS_HOST; redis_host=${REDIS_HOST:-} ;;
+  esac
 
   if [ -n "${postgres_url}" ]; then
     echo "Using ${postgres_url_env_var} (${postgres_url}) to connect to postgres."
@@ -84,13 +87,12 @@ main_native() {
   cleanup() {
     local services=$@
 
-    if [ -n "${redis_host}" ] && [[ $services == *"redis_test"* ]]; then
-      redis_clear "redis://${redis_host}" &> /dev/null
-    fi
-
-    if [ -n "${postgres_url}" ] && [[ $services == *"db_test"* ]]; then
-      pg_clear "${postgres_url}" &> /dev/null
-    fi
+    case "$services" in
+      *redis_test*) [ -z "${redis_host}" ] || redis_clear "redis://${redis_host}" > /dev/null 2>&1 ;;
+    esac
+    case "$services" in
+      *db_test*) [ -z "${postgres_url}" ] || pg_clear "${postgres_url}" > /dev/null 2>&1 ;;
+    esac
   }
 
   # trap SIGINT and performs cleanup
@@ -101,10 +103,10 @@ main_native() {
   }
 
   # Run the arguments as a command
+  code=0
   DB_POSTGRES_URL="${postgres_url}" \
   REDIS_HOST="${redis_host}" \
-  "$@"
-  code=$?
+  "$@" || code=$?
 
   cleanup ${services}
 
@@ -172,10 +174,10 @@ main_docker() {
 
 # Main entry point
 main() {
-  if ! docker ps >/dev/null 2>&1; then
-    echo "Docker unavailable. Running on host."
-    main_native $@
+  if [ "${ATPROTO_TEST_NATIVE:-0}" = 1 ] || ! docker ps >/dev/null 2>&1; then
+    echo "Using externally provisioned test services."
+    main_native "$@"
   else
-    main_docker $@
+    main_docker "$@"
   fi
 }
