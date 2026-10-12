@@ -78,7 +78,11 @@ jobs:
           pnpm --filter '!atp' --recursive --workspace-concurrency=1 --if-present run prebuild
           pnpm run build:ts
           pnpm --filter '!atp' --recursive --workspace-concurrency=1 --if-present run build:ui
-      - run: pnpm --recursive --stream --include-workspace-root --workspace-concurrency=1 run '/^verify:.+$/'
+      - name: Verify with bounded formatter workers
+        run: |
+          pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 --if-present run '/^verify:.+$/'
+          pnpm run verify:style --parallel-workers=1
+          pnpm run verify:lint
       - uses: actions/setup-node@v7
         with:
           node-version: '22.x'
