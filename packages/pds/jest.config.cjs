@@ -1,7 +1,6 @@
 /** @type {import('jest').Config} */
 module.exports = {
   displayName: 'PDS',
-  workerIdleMemoryLimit: '512MB',
   transform: {
     '^.+\\.ts$': [
       '@swc/jest',

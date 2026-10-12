@@ -144,5 +144,7 @@ jobs:
             sleep 2
           done
           test "$ready" = 1
-          runuser -u pirs-test -- env PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
-            pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=2 --passWithNoTests
+          for shard in $(seq 1 8); do
+            runuser -u pirs-test -- env PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
+              pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --shard="$shard/8" --passWithNoTests
+          done
