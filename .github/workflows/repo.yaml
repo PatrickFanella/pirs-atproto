@@ -94,7 +94,23 @@ jobs:
       - name: Run the complete suite against job-owned services
         env:
           ATPROTO_TEST_NATIVE: '1'
-          DB_TEST_POSTGRES_URL: postgresql://pg:password@postgres:5432/postgres
-          REDIS_TEST_HOST: redis:6379
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
           LOG_ENABLED: 'false'
-        run: pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --passWithNoTests
+        run: |
+          postgres_host=$(docker inspect --format '{{.NetworkSettings.Networks.bridge.IPAddress}}' "$POSTGRES_CONTAINER")
+          redis_host=$(docker inspect --format '{{.NetworkSettings.Networks.bridge.IPAddress}}' "$REDIS_CONTAINER")
+          test -n "$postgres_host"
+          test -n "$redis_host"
+          export DB_TEST_POSTGRES_URL="postgresql://pg:password@${postgres_host}:5432/postgres"
+          export REDIS_TEST_HOST="${redis_host}:6379"
+          ready=0
+          for attempt in $(seq 1 30); do
+            if pg_isready -h "$postgres_host" -p 5432 -U pg && [ "$(redis-cli -h "$redis_host" ping)" = PONG ]; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --passWithNoTests
