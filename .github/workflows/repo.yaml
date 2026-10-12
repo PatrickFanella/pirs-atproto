@@ -45,6 +45,11 @@ jobs:
     needs: changeset
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    container:
+      image: docker.gitea.com/runner-images:ubuntu-22.04
+      options: --cap-add=SYS_ADMIN
+    env:
+      PUPPETEER_CACHE_DIR: /tmp/pirs-puppeteer
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -77,6 +82,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
           pnpm --filter @atproto/pds exec puppeteer browsers install chrome --install-deps
+      - name: Prepare unprivileged browser tests
+        run: |
+          useradd --create-home --uid 10001 pirs-test
+          pnpm_binary=$(readlink -f "$(command -v pnpm)")
+          pnpm_root=$(dirname "$(dirname "$pnpm_binary")")
+          test "$(node -p "require('$pnpm_root/package.json').name")" = pnpm
+          tools_dir="${RUNNER_TEMP}/pirs-pnpm"
+          cp -R "$pnpm_root" "$tools_dir"
+          ln -s pnpm.cjs "$tools_dir/bin/pnpm"
+          chown -R pirs-test:pirs-test "$PWD" "$PUPPETEER_CACHE_DIR" "$tools_dir"
+          sandbox=$(find "$PUPPETEER_CACHE_DIR/chrome" -name chrome_sandbox -type f -print -quit)
+          test -n "$sandbox"
+          chown root:root "$sandbox"
+          chmod 4755 "$sandbox"
+          echo "PIRS_TEST_PNPM_DIR=$tools_dir" >> "$GITHUB_ENV"
+          runuser -u pirs-test -- env PATH="$tools_dir/bin:$PATH" \
+            pnpm --filter @atproto/pds exec node --input-type=module -e \
+            'import { launch } from "puppeteer"; const browser = await launch({browser: "chrome"}); await browser.close();'
       - name: Run the complete suite against job-owned services
         env:
           ATPROTO_TEST_NATIVE: '1'
@@ -121,4 +144,5 @@ jobs:
             sleep 2
           done
           test "$ready" = 1
-          pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --passWithNoTests
+          runuser -u pirs-test -- env PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
+            pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=2 --passWithNoTests
