@@ -1,4 +1,12 @@
-# AT Protocol Reference Implementation (TypeScript)
+# Pirs AT Protocol fork
+
+Hook-only fork of [Bluesky's AT Protocol implementation](https://github.com/bluesky-social/atproto)
+used for [Pirs](https://github.com/PatrickFanella/pirs) package qualification.
+The upstream implementation, package names, license, and documentation below
+remain attributed to their original authors. Pirs-specific hook contracts are
+maintained in the Pirs repository.
+
+## Upstream AT Protocol reference implementation
 
 Welcome friends!
 
