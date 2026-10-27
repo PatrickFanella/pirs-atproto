@@ -16,16 +16,7 @@ jobs:
     name: Changeset
     timeout-minutes: 15
     runs-on: ubuntu-latest
-    # The dependabot-changeset.yml workflow will trigger a new commit after
-    # Dependabot updates, which will re-trigger this workflow. Other jobs below
-    # depend on this job, and will be skipped too. If Dependabot updates non NPM
-    # dependencies (Dockerfile, GitHub Actions), this workflow should not be
-    # affected (build/verify/test are not using the docker images) and can be
-    # skipped. Note that in case, dependabot-changeset.yml will not trigger a
-    # new commit, so this workflow will not be re-triggered. This is expected.
-    if: >
-      github.event.pull_request.draft == false &&
-      github.event.sender.login != 'dependabot[bot]'
+    # Release metadata applies to ready human PRs; validation runs for every PR.
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,7 +29,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-      - run: pnpm changeset status --since=origin/${{ github.base_ref }}
+      - name: Check release metadata when applicable
+        if: >
+          github.event.pull_request.draft == false &&
+          github.event.sender.login != 'dependabot[bot]'
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
   qualification:
     name: Build, verify and test
@@ -149,3 +144,29 @@ jobs:
             runuser -u pirs-test -- env PNPM_HOME="$PIRS_TEST_PNPM_DIR/bin" PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
               pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --shard="$shard/8" --passWithNoTests
           done
+
+  required:
+    name: Required checks
+    if: always()
+    needs: [changeset, qualification]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every validation job to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          results = json.loads(os.environ['RESULTS'])
+          required = {'qualification', 'changeset'}
+          if not isinstance(results, dict) or set(results) != required:
+              raise SystemExit('Required check inventory is incomplete or unexpected')
+          failed = {name: job.get('result') if isinstance(job, dict) else 'invalid'
+                    for name, job in results.items()
+                    if not isinstance(job, dict) or job.get('result') != 'success'}
+          if failed:
+              raise SystemExit(f'Required checks did not pass: {failed}')
+          print('All required checks passed')
+          PY
