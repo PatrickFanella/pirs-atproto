@@ -71,7 +71,7 @@
     "kysely": "^0.29.2",
     "leo-profanity": "^1.8.0",
     "murmurhash": "^2.0.1",
-    "p-queue": "^8.0.0",
+    "p-queue": "^10.0.0",
     "pg": "^8.10.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
