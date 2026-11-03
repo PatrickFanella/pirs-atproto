@@ -437,8 +437,8 @@ importers:
         specifier: ^1.1.4
         version: 1.3.0(@bufbuild/protobuf@1.6.0)
       '@connectrpc/connect-express':
-        specifier: ^1.1.4
-        version: 1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect-node@1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0)))(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))
+        specifier: ^2.3.0
+        version: 2.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect-node@1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0)))(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))(express@4.18.2)
       '@connectrpc/connect-node':
         specifier: ^1.1.4
         version: 1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))
@@ -3251,13 +3251,14 @@ packages:
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
 
-  '@connectrpc/connect-express@1.3.0':
-    resolution: {integrity: sha512-6wbaQheD9cb4DnU1PvgVQdB1XPfA0bhlA0V0ZKx6oJJnTgGEYBzPrQztmqs5XW36/r+qJRfMgaVzZfX8MLafgA==}
-    engines: {node: '>=16.0.0'}
+  '@connectrpc/connect-express@2.3.0':
+    resolution: {integrity: sha512-61tSopfMFXMAwc+vCvjRhVFR/egbY2kNyEjgHEgTPNEuhiGhVqPP+Okhgf9hlxSjPw2lUg7sCMyRItQfarRb0Q==}
+    engines: {node: '>=22'}
     peerDependencies:
-      '@bufbuild/protobuf': ^1.4.2
-      '@connectrpc/connect': 1.3.0
-      '@connectrpc/connect-node': 1.3.0
+      '@bufbuild/protobuf': ^2.7.0
+      '@connectrpc/connect': 2.3.0
+      '@connectrpc/connect-node': 2.3.0
+      express: ^4.18.2 || ^5.0.1
 
   '@connectrpc/connect-node@1.3.0':
     resolution: {integrity: sha512-2fV/z/8MUFOkTn2Gbm7T/qvRfkpt/D/w7ykYqACZRH6VNG/faY4lH2wUZiNkwv9tzTrECKOJFyPsaGs3nRYK3w==}
@@ -4539,6 +4540,7 @@ packages:
   '@opentelemetry/propagator-jaeger@2.8.0':
     resolution: {integrity: sha512-Xnz9zZvvQzUw+9DrOn0MomR7BxFCkA2pcfXBQuHC28ndJpSbjLs7knzYb05kw5SyCjSsEWombkZMgGcJSk8JVg==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Package no longer supported. See https://github.com/open-telemetry/opentelemetry-js/pull/7077
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
@@ -4609,12 +4611,14 @@ packages:
   '@opentelemetry/sdk-trace-base@2.8.0':
     resolution: {integrity: sha512-mhU4jp+vW0mGbFRd+GeXHvmfA4aDqWjBjLC3pE5XMpLs0IE2ryYb019Ts2AQrOq67gaTF25D91+fgvEHDZEnuQ==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-node@2.8.0':
     resolution: {integrity: sha512-nZt9OGufioAc3AfoLTqA9bsAeaMJAictYDdI2VcNQ+PmT+3rfKjAZDZvgPfd8VPX0O5Bw1hdQF6kDK8VSpZiWg==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
@@ -5223,6 +5227,7 @@ packages:
   '@smithy/smithy-client@4.5.1':
     resolution: {integrity: sha512-PuvtnQgwpy3bb56YvHAP7eRwp862yJxtQno40UX9kTjjkgTlo//ov+e1IVCFTiELcAOiqF2++Y0e7eH/Zgv5Vw==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/types@4.3.2':
     resolution: {integrity: sha512-QO4zghLxiQ5W9UZmX2Lo0nta2PuE1sSrXUYDoaB6HMR762C0P7v/HEPHf6ZdglTVssJG1bsrSBxdc3quvDSihw==}
@@ -12095,12 +12100,12 @@ snapshots:
   '@colors/colors@1.5.0':
     optional: true
 
-  '@connectrpc/connect-express@1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect-node@1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0)))(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))':
+  '@connectrpc/connect-express@2.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect-node@1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0)))(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))(express@4.18.2)':
     dependencies:
       '@bufbuild/protobuf': 1.6.0
       '@connectrpc/connect': 1.3.0(@bufbuild/protobuf@1.6.0)
       '@connectrpc/connect-node': 1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))
-      '@types/express': 4.17.21
+      express: 4.18.2
 
   '@connectrpc/connect-node@1.3.0(@bufbuild/protobuf@1.6.0)(@connectrpc/connect@1.3.0(@bufbuild/protobuf@1.6.0))':
     dependencies:
