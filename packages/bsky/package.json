@@ -75,7 +75,7 @@
     "pg": "^8.10.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
-    "sharp": "^0.33.5",
+    "sharp": "^0.35.5",
     "structured-headers": "^1.0.1",
     "uint8arrays": "^5.0.0",
     "undici": "^8.5.0",
