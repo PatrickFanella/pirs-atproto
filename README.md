@@ -1,18 +1,73 @@
-# Pirs AT Protocol fork
+# pirs-atproto
 
-Hook-only fork of [Bluesky's AT Protocol implementation](https://github.com/bluesky-social/atproto)
-used for [Pirs](https://github.com/PatrickFanella/pirs) package qualification.
-The upstream implementation, package names, license, and documentation below
-remain attributed to their original authors. Pirs-specific hook contracts are
-maintained in the Pirs repository.
+A fork of [Bluesky's AT Protocol implementation](https://github.com/bluesky-social/atproto)
+that adds one hook to the PDS package for
+[Pirs](https://github.com/subculture-collective/pirs), an experiment in making an
+AT Protocol personal data server extensible. It exists so Pirs can build a
+pinned, patched `@atproto/pds` package. It is experimental and is not published
+to npm.
 
-## Upstream AT Protocol reference implementation
+Everything else is upstream code, kept as close to upstream as possible. Package
+names, licenses and documentation remain attributed to their original authors.
+
+## What the fork changes
+
+`packages/pds` exports a `PdsHooks` type with one optional field,
+`xrpcMiddleware`: a list of Express request handlers that run under `/xrpc`
+after CORS and the well-known routes, before the XRPC router. Pass it as the
+`hooks` argument to `PDS.create`, `PDS.fromEnv` or `PDS.run`. The handlers are
+trusted transport adapters; Pirs runs plugin code in a separate process, never
+inside the PDS. `packages/pds/tests/pirs-hooks.test.ts` covers a routed XRPC
+method through the hook.
+
+The hook contract and the plugin host are documented in the
+[Pirs repository](https://github.com/subculture-collective/pirs).
+
+## Quick start
+
+You need Node.js 22 or later (`.nvmrc` pins 24) and pnpm. Tests need Docker
+for PostgreSQL and Redis.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm verify          # prettier and eslint
+pnpm test            # all package tests, with test PostgreSQL and Redis
+```
+
+To run only the PDS tests, run `pnpm test` inside `packages/pds`
+(`pnpm test:sqlite` skips PostgreSQL and Redis). The Makefile
+wraps the same steps (`make deps`, `make build`, `make test`, `make lint`).
+
+## Contributing
+
+Report bugs in the fork's hook and request changes in
+[GitHub issues](https://github.com/subculture-collective/pirs-atproto/issues).
+Bugs in upstream AT Protocol code belong with
+[bluesky-social/atproto](https://github.com/bluesky-social/atproto).
+
+Send code as a pull request on GitHub against `main`. CI checks changesets,
+then builds, verifies (prettier and eslint) and tests the packages on every
+pull request. [CONTRIBUTING.md](CONTRIBUTING.md) and
+[STYLE_GUIDE.md](STYLE_GUIDE.md) are upstream's and describe the code
+conventions.
+
+## License
+
+Dual-licensed under MIT and Apache-2.0, like upstream. See
+[LICENSE.txt](LICENSE.txt), [LICENSE-MIT.txt](LICENSE-MIT.txt) and
+[LICENSE-APACHE.txt](LICENSE-APACHE.txt). The fork's changes are offered under
+the same terms.
+
+## Upstream README
+
+The rest of this file is upstream's README.
 
 Welcome friends!
 
 This repository contains Bluesky's reference implementation of AT Protocol, and of the `app.bsky` microblogging application service backend.
 
-## About AT Protocol
+### About AT Protocol
 
 The Authenticated Transfer Protocol ("ATP" or "atproto") is a decentralized social media protocol, developed by [Bluesky Social PBC](https://bsky.social). Third-party software can be as seamless as first-party: custom feeds, federated services, and alternative clients are all built against the same APIs, so developers are never locked out of the ecosystems they help build. Learn more at:
 
@@ -22,7 +77,7 @@ The Authenticated Transfer Protocol ("ATP" or "atproto") is a decentralized soci
 
 The Bluesky Social application encompasses a set of schemas and APIs built in the overall AT Protocol framework. The namespace for these "Lexicons" is `app.bsky.*`.
 
-## What is in here?
+### What is in here?
 
 **Lexicons:** for both the `com.atproto.*` and `app.bsky.*` are canonically versioned in this repo, for now, under `./lexicons/`. These are JSON files in the [Lexicon schema definition language](https://atproto.com/specs/lexicon), similar to JSON Schema or OpenAPI.
 
@@ -40,21 +95,21 @@ The Bluesky Social application encompasses a set of schemas and APIs built in th
 - `bsync`: Internal synchronization service used by the AppView for cross-service state such as mutes and notifications.
 - `ozone`: Moderation service implementing the `tools.ozone.*` API.
 
-## What is not in here?
+### What is not in here?
 
 The source code for the Bluesky Social client app (for web and mobile) can be found at [bluesky-social/social-app](https://github.com/bluesky-social/social-app).
 
 Go programming language source code is in [bluesky-social/indigo](https://github.com/bluesky-social/indigo), including the BGS implementation.
 
-## Contributions
+### Contributions
 
 While we do accept contributions, we prioritize high quality issues and pull requests. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the developer quickstart, the rules and guidelines to follow before filing an issue or submitting a PR, and our policy on LLM-assisted contributions. Code conventions are documented in [STYLE_GUIDE.md](./STYLE_GUIDE.md).
 
-## Security disclosures
+### Security disclosures
 
 If you discover any security issues, please send an email to security@bsky.app. The email is automatically CCed to the entire team, and we'll respond promptly. See [SECURITY.md](https://github.com/bluesky-social/atproto/blob/main/SECURITY.md) for more info.
 
-## License
+### License
 
 This project is dual-licensed under MIT and Apache 2.0 terms:
 
