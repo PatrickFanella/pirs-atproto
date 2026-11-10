@@ -1,0 +1,168 @@
+name: PR CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changeset:
+    name: Changeset
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    # Release metadata applies to ready human PRs; validation runs for every PR.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # needed for git diff against base branch
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version-file: '.nvmrc'
+      - run: pnpm install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+      - name: Check release metadata when applicable
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.draft == false &&
+          github.event.sender.login != 'dependabot[bot]'
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
+
+  qualification:
+    name: Build, verify and test
+    needs: changeset
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: docker.gitea.com/runner-images:ubuntu-22.04
+      options: --cap-add=SYS_ADMIN
+    env:
+      PUPPETEER_CACHE_DIR: /tmp/pirs-puppeteer
+      PNPM_CONFIG_STORE_DIR: /tmp/pirs-pnpm-store
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - run: pnpm install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+      - name: Build with bounded code generation
+        run: |
+          pnpm run build:tooling --force
+          pnpm --filter '!atp' --recursive --workspace-concurrency=1 --if-present run prebuild
+          pnpm run build:ts
+          pnpm --filter '!atp' --recursive --workspace-concurrency=1 --if-present run build:ui
+      - name: Verify with bounded formatter workers
+        run: |
+          pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 --if-present run '/^verify:.+$/'
+          pnpm run verify:style --parallel-workers=1
+          pnpm run verify:lint
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.x'
+      - name: Rebuild native dependencies for Node 22 tests
+        run: pnpm rebuild --recursive
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+      - name: Install test service and browser clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client redis-tools
+          pnpm --filter @atproto/pds exec puppeteer browsers install chrome --install-deps
+      - name: Prepare unprivileged browser tests
+        run: |
+          useradd --create-home --uid 10001 pirs-test
+          tools_dir="${RUNNER_TEMP}/pirs-pnpm"
+          npm install --global --prefix "$tools_dir" --ignore-scripts --no-audit --no-fund \
+            "$(node -p 'require("./package.json").packageManager')"
+          chown -R pirs-test:pirs-test "$PWD" "$PUPPETEER_CACHE_DIR" "$PNPM_CONFIG_STORE_DIR" "$tools_dir"
+          sandbox=$(find "$PUPPETEER_CACHE_DIR/chrome" -name chrome_sandbox -type f -print -quit)
+          test -n "$sandbox"
+          chown root:root "$sandbox"
+          chmod 4755 "$sandbox"
+          echo "PIRS_TEST_PNPM_DIR=$tools_dir" >> "$GITHUB_ENV"
+          runuser -u pirs-test -- env PNPM_HOME="$tools_dir/bin" PATH="$tools_dir/bin:$PATH" \
+            pnpm --filter @atproto/pds exec node --input-type=module -e \
+            'import { launch } from "puppeteer"; const browser = await launch({browser: "chrome"}); await browser.close();'
+      - name: Run the complete suite against job-owned services
+        env:
+          ATPROTO_TEST_NATIVE: '1'
+          LOG_ENABLED: 'false'
+        run: |
+          job_container=$(docker inspect --format '{{.Id}}' "$(hostname)")
+          test -n "$job_container"
+          network_id=
+          postgres_id=
+          redis_id=
+          connected=0
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ "$connected" = 1 ]; then docker network disconnect "$network_id" "$job_container" || true; fi
+            if [ -n "$postgres_id" ]; then docker rm --force --volumes "$postgres_id" || true; fi
+            if [ -n "$redis_id" ]; then docker rm --force --volumes "$redis_id" || true; fi
+            if [ -n "$network_id" ]; then docker network rm "$network_id" || true; fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          docker pull postgres:14.4-alpine
+          docker pull redis:7.0-alpine
+          network_id=$(docker network create --internal "pirs-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}-${job_container:0:12}")
+          postgres_id=$(docker create --network "$network_id" --network-alias postgres \
+            --env POSTGRES_USER=pg --env POSTGRES_PASSWORD=password \
+            postgres:14.4-alpine -c max_connections=1000)
+          redis_id=$(docker create --network "$network_id" --network-alias redis redis:7.0-alpine)
+          docker start "$postgres_id" "$redis_id"
+          docker network connect "$network_id" "$job_container"
+          connected=1
+          export DB_TEST_POSTGRES_URL=postgresql://pg:password@postgres:5432/postgres
+          export REDIS_TEST_HOST=redis:6379
+          ready=0
+          for attempt in $(seq 1 30); do
+            if pg_isready -h postgres -p 5432 -U pg && [ "$(redis-cli -h redis ping)" = PONG ]; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          for shard in $(seq 1 8); do
+            runuser -u pirs-test -- env PNPM_HOME="$PIRS_TEST_PNPM_DIR/bin" PATH="$PIRS_TEST_PNPM_DIR/bin:$PATH" \
+              pnpm --filter '!atp' --recursive --stream --workspace-concurrency=1 run test --maxWorkers=1 --shard="$shard/8" --passWithNoTests
+          done
+
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [changeset, qualification]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every verification job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ["RESULTS"])
+          expected = {'changeset', 'qualification'}
+          assert set(results) == expected, results
+          for name, result in results.items():
+              assert result["result"] == "success", name + " did not pass"
+          PY
