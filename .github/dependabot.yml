@@ -1,35 +1,40 @@
+# This fork takes dependency changes from upstream. Dependabot is kept quiet:
+# one grouped minor/patch PR per ecosystem per month, direct dependencies only,
+# and no major-version updates.
 version: 2
 updates:
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
-      interval: 'weekly'
-    open-pull-requests-limit: 10
-    groups:
-      # Dev tooling churns the most and never ships in a published artifact,
-      # so a single PR per week keeps the review surface small.
-      dev-dependencies:
-        dependency-type: 'development'
+      interval: 'monthly'
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: '*'
         update-types:
-          - 'minor'
-          - 'patch'
-      # Non-breaking runtime bumps, batched into one PR. Majors are excluded
-      # here so they land individually and stay attributable.
-      prod-dependencies:
-        dependency-type: 'production'
+          - 'version-update:semver-major'
+    groups:
+      npm-minor-patch:
+        patterns:
+          - '*'
         update-types:
           - 'minor'
           - 'patch'
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
-      interval: 'weekly'
+      interval: 'monthly'
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-major'
     groups:
-      # CI-only, and a bad bump fails loudly on the next run, so batch every
-      # action bump (majors included) into one PR.
-      actions:
+      actions-minor-patch:
         patterns:
           - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
   - package-ecosystem: 'docker'
     directories:
       - '/services/bsky'
@@ -37,10 +42,18 @@ updates:
       - '/services/ozone'
       - '/services/pds'
     schedule:
-      interval: 'weekly'
+      interval: 'monthly'
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-major'
     groups:
       # All four services pin the same node:*-alpine base image; group them so
       # a base image bump is one PR instead of four near-identical ones.
       base-images:
         patterns:
           - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
